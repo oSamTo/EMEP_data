@@ -4,6 +4,79 @@
 #########################################################
 
 #########################################################################################
+#### function to set extents for various domains
+setDomain <- function(area = c("UK","EIRE","EU_EMEP"), crs = c("BNG","LL")){
+  
+  area  <- match.arg(area)  # area to process
+  crs   <- match.arg(crs)   # crs to return in
+  
+  # if statements to return correct domain
+  if(area == "UK"){
+    
+    if(crs == "BNG"){
+      
+      r <- rast(xmin = -50000, xmax = 800000, ymin = -50000, ymax = 1350000,
+                res = 1000, crs = "epsg:27700", vals = NA)
+      
+    }else{
+     
+      r <- rast(xmin = -10.55, xmax = 5.61, ymin = 49.28, ymax = 62.03,
+                              res = 0.01, crs = "epsg:4326", vals = NA)
+       
+    }
+    
+  }else if(area == "EIRE"){
+    
+    if(crs == "BNG"){
+      
+      r <- rast(xmin = -230000, xmax = 300000, ymin = -50000, ymax = 800000,
+                              res = 1000, crs = "epsg:27700", vals = NA)
+      
+    }else{
+      
+      r <- rast(xmin = -12.31, xmax = -3.37, ymin = 49.12, ymax = 57.08,
+                              res = 0.01, crs = "epsg:4326", vals = NA)
+      
+    }
+    
+  }else if(area == "EU_EMEP"){
+    
+    if(crs == "BNG"){
+      
+      stop(print("Cannot have BNG crs for the EU EMEP domain"))
+      
+    }else{
+      
+      r <- rast(xmin = -30, xmax = 90, ymin = 30, ymax = 82, 
+                        res = 0.1, crs = "epsg:4326", vals = NA)
+      
+    }
+    
+  }
+  
+  return(r)
+}
+
+
+
+# new extended domain to include both UK & Eire
+r_naei_1km_BNG <<- rast(xmin = -50000, xmax = 800000, ymin = -50000, ymax = 1350000,
+                        res = 1000, crs = "epsg:27700", vals = NA)
+# This is the lat long equivalent raster of the UK domain at 1km in BNG
+r_naei_0.01_LL <<- rast(xmin = -10.6, xmax = 5.7, ymin = 49.2, ymax = 62.1,
+                        res = 0.01, crs = "epsg:4326", vals = NA)
+
+r_eire_1km_BNG <<- rast(xmin = -230000, xmax = 300000, ymin = -50000, ymax = 800000,
+                        res = 1000, crs = "epsg:27700", vals = NA)
+
+r_eire_0.01_LL <<- rast(xmin = -12.5, xmax = -3.3, ymin = 49, ymax = 57.2,
+                        res = 0.01, crs = "epsg:4326", vals = NA)
+
+r_dom_EU <<- rast(xmin = -30, xmax = 90, ymin = 30, ymax = 82, 
+                  res = 0.01, crs = "epsg:4326", vals = NA)
+
+
+#########################################################################################
 #### function to create csv files for diffuse and point emissions (UK is split, EIRE is total)
 ## surfaces are created for EIRE and UK for BNG and LL
 

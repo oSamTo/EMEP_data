@@ -4,6 +4,8 @@ lapply(list.of.packages, require, character.only = TRUE)
 ##############################################################################################################
 
 data_dir <<- ("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS")
+dir_data_raw <<- ("/gws/nopw/j04/ceh_generic/samtom/emissions_data/data_raw")
+dir_data <<- ("/gws/nopw/j04/ceh_generic/samtom/emissions_data/data")
 
 #########################################################################
 #### SETTING UP WORKSPACE FOR PROCESSING UK AND IRISH EMISSIONS DATA ####
