@@ -57,23 +57,23 @@ setDomain <- function(area = c("UK","EIRE","EU_EMEP"), crs = c("BNG","LL")){
   return(r)
 }
 
+#########################################################################################
+#### functions to create quick/simple lookups between GNFR and SNAP for converting sector maps
 
+GNFRtoSNAP <- function(){
+  
+  dt <- data.table(GNFR = c("A_PublicPower","B_Industry","C_OtherStatComb","D_Fugitive","E_Solvents","F_RoadTransport","G_Shipping","H_Aviation","I_Offroad","J_Waste","K_AgriLivestock","L_AgriOther","N_Natural","O_AviCruise","P_IntShipping","q_LULUCF"), SNAP = c(1,3,2,5,6,7,8,8,8,9,10,10,11,NA,8,11))
+  
+  return(dt)
+}
 
-# new extended domain to include both UK & Eire
-r_naei_1km_BNG <<- rast(xmin = -50000, xmax = 800000, ymin = -50000, ymax = 1350000,
-                        res = 1000, crs = "epsg:27700", vals = NA)
-# This is the lat long equivalent raster of the UK domain at 1km in BNG
-r_naei_0.01_LL <<- rast(xmin = -10.6, xmax = 5.7, ymin = 49.2, ymax = 62.1,
-                        res = 0.01, crs = "epsg:4326", vals = NA)
-
-r_eire_1km_BNG <<- rast(xmin = -230000, xmax = 300000, ymin = -50000, ymax = 800000,
-                        res = 1000, crs = "epsg:27700", vals = NA)
-
-r_eire_0.01_LL <<- rast(xmin = -12.5, xmax = -3.3, ymin = 49, ymax = 57.2,
-                        res = 0.01, crs = "epsg:4326", vals = NA)
-
-r_dom_EU <<- rast(xmin = -30, xmax = 90, ymin = 30, ymax = 82, 
-                  res = 0.01, crs = "epsg:4326", vals = NA)
+SNAPtoGNFR <- function(){
+  
+  dt <- data.table(SNAP = c(1,3,4,2,5,6,7,NA,8,NA,9,10,NA,11,NA,NA,NA), 
+                   GNFR = c("A_PublicPower","B_Industry","B_Industry","C_OtherStatComb","D_Fugitive","E_Solvents","F_RoadTransport","G_Shipping","H_Aviation","I_Offroad","J_Waste","K_AgriLivestock","L_AgriOther","N_Natural","O_AviCruise","P_IntShipping","q_LULUCF"))
+  
+  return(dt)
+}
 
 
 #########################################################################################
