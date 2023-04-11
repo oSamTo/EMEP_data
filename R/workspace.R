@@ -3,26 +3,29 @@ list.of.packages <- c("sf","terra","stringr","dplyr","ggplot2","data.table","sta
 lapply(list.of.packages, require, character.only = TRUE)
 ##############################################################################################################
 
-data_dir <<- ("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS")
+data_dir <- ("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS")
 
 
 #########################################################################
 #### SETTING UP WORKSPACE FOR PROCESSING UK AND IRISH EMISSIONS DATA ####
 #########################################################################
 
+
 # new extended domain to include both UK & Eire
-r_naei_1km_BNG <<- rast(xmin = -50000, xmax = 800000, ymin = -50000, ymax = 1350000,
+r_dom_naei_BNG <<- rast(xmin = -50000, xmax = 800000, ymin = -50000, ymax = 1350000,
                         res = 1000, crs = "epsg:27700", vals = NA)
 # This is the lat long equivalent raster of the UK domain at 1km in BNG
-r_naei_0.01_LL <<- rast(xmin = -10.6, xmax = 5.7, ymin = 49.2, ymax = 62.1,
-                        res = 0.01, crs = "epsg:4326", vals = NA)
+r_dom_naei_LL <<- rast(xmin = -10.55, xmax = 5.61, ymin = 49.28, ymax = 62.03,
+                       res = 0.01, crs = "epsg:4326", vals = NA)
 
-r_eire_1km_BNG <<- rast(xmin = -230000, xmax = 300000, ymin = -50000, ymax = 800000,
+r_dom_eire_BNG <<- rast(xmin = -230000, xmax = 300000, ymin = -50000, ymax = 800000,
                         res = 1000, crs = "epsg:27700", vals = NA)
 
-r_eire_0.01_LL <<- rast(xmin = -12.5, xmax = -3.3, ymin = 49, ymax = 57.2,
-                        res = 0.01, crs = "epsg:4326", vals = NA)
+r_dom_eire_LL <<- rast(xmin = -12.31, xmax = -3.37, ymin = 49.12, ymax = 57.08,
+                       res = 0.01, crs = "epsg:4326", vals = NA)
 
+r_dom_emep_LL <<- rast(xmin = -30, xmax = 90, ymin = 30, ymax = 82, 
+                       res = 0.1, crs = "epsg:4326", vals = NA)
 
 # sector and sector names
 dt_SNAP <<- data.table(sector_num = 1:11,
@@ -35,10 +38,10 @@ dt_GNFR <<- data.table(sector_num = 1:16,
                        sector_name = c("A_PublicPower","B_Industry","C_OtherStatComb","D_Fugitive","E_Solvents","F_RoadTransport","G_Shipping","H_Aviation","I_Offroad","J_Waste","K_AgriLivestock","L_AgriOther","N_Natural","O_AviCruise","P_IntShipping","q_LULUCF"))
 
 # generate rough SNAP to GNFR (and vice versa) lookup tables
-dt_SNAP_to_GNFR <<- data.table(SNAP = c(1,3,4,2,5,6,7,NA,8,NA,9,10,NA,11,NA,NA,NA), 
+lookup_SNAPGNFR <<- data.table(SNAP = c(1,3,4,2,5,6,7,NA,8,NA,9,10,NA,11,NA,NA,NA), 
                             GNFR = c("A_PublicPower","B_Industry","B_Industry","C_OtherStatComb","D_Fugitive","E_Solvents","F_RoadTransport","G_Shipping","H_Aviation","I_Offroad","J_Waste","K_AgriLivestock","L_AgriOther","N_Natural","O_AviCruise","P_IntShipping","q_LULUCF"))
 
-dt_GNFR_to_SNAP <<- data.table(GNFR = c("A_PublicPower","B_Industry","C_OtherStatComb","D_Fugitive","E_Solvents","F_RoadTransport","G_Shipping","H_Aviation","I_Offroad","J_Waste","K_AgriLivestock","L_AgriOther","N_Natural","O_AviCruise","P_IntShipping","q_LULUCF"),
+lookup_GNFRSNAP <<- data.table(GNFR = c("A_PublicPower","B_Industry","C_OtherStatComb","D_Fugitive","E_Solvents","F_RoadTransport","G_Shipping","H_Aviation","I_Offroad","J_Waste","K_AgriLivestock","L_AgriOther","N_Natural","O_AviCruise","P_IntShipping","q_LULUCF"),
                             SNAP = c(1,3,2,5,6,7,8,8,8,9,10,10,11,NA,8,11))
 
 
