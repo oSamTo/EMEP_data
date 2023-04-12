@@ -77,9 +77,27 @@ SNAPtoGNFR <- function(){
 
 #########################################################################################
 #### function to set the pollutant vector as a target
-vectorPolls <- function(v_poll_select){
+#vectorPolls <- function(v_poll_select){
+#  
+#  v <- v_poll_select
+#  return(v)
+#  
+#}
+
+#########################################################################################
+#### function to set the pollutant vector as a target
+vectorSecs <- function(v_sector_maps){
   
-  v <- v_poll_select
+  v <- v_sector_maps
+  return(v)
+  
+}
+
+#########################################################################################
+#### function to set the pollutant vector as a target
+vectorSecs_fnames <- function(v_sector_maps, end_year){
+  
+  v <- paste0("NAEI_totals_1970_",end_year,"_uk_",v_sector_maps,"_t.csv")
   return(v)
   
 }
@@ -95,103 +113,157 @@ vectorPolls <- function(v_poll_select){
 
 
 #########################################################################################
-#### function to read in UK NAEI points data and process it, write output, over all pollutants
-## only UK. Eire and EU have total emissions gridded. E-PRTR is not a complete register (plus not needed)
-pointsUKformat <- function(v_pollutants, start_year, end_year, lookup_NFR, lookup_SIC, lookup_PID, dt_SNAPGNFR){
+#### function to read in UK NAEI points data and process it, write output, over all pollutants.
+#### Only UK. Eire and EU have total emissions gridded. E-PRTR is not a complete register (plus not needed)
+pointsUKformat <- function(end_year, lookup_NFR, lookup_SIC, lookup_PID, dt_SNAPGNFR){
+  
+  # process the point data for all years and for all pollutants.
+  # There's no point to do this over and over for years/pollutants
+  # it's a bit ugly due to changing data formats, but is what it is. 
   
   dt_NFR <- fread(lookup_NFR)
-  dt_SIC <- fread(lookup_SIC)
-  dt_PID <- fread(lookup_PID)
+  dt_SIC <- fread(lookup_SIC)[!(is.na(PollutantID))] # point to sector
+  dt_PID <- fread(lookup_PID)[!is.na(PollutantID)]
   
-  # vector of names and read
-  v_fnames <- paste0("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/NAEI_data/point/raw_data/NAEIPointsSources_",start_year:end_year,".xlsx")
+  #####################
+  ## Pre 2011 points ##
+  dt_pts_pre11 <- setDT(read_excel("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/NAEI_data/point/raw_data/NAEIPointsSources_1990-2018_EMEPpolls.xlsx", sheet = "Data"))
+  setnames(dt_pts_pre11, c("Pollutant Name", "PollCode","SectorName"), c("Pollutant","PollutantID","Sector"))
+  dt_pts_pre11[,c("PlantID","Operator","LocusID","Region","Unit","Datatype","Site",as.character(2011:2018)) := NULL]
   
-  l_pts <- lapply(v_fnames, function(x) as.data.table(read_excel(x, sheet = "Data"))) 
+  # sum together some lines
+  dt_pts_pre11 <- dt_pts_pre11[, lapply(.SD, sum, na.rm=TRUE), by=.(Pollutant, PollutantID, SectorID, Sector, Easting, Northing), .SDcols= as.character(1990:2010)]
   
-  ## need something for pre-2011 here
+  # melt long to get ready to join to later years
+  dt_pts_pre11 <- melt(dt_pts_pre11, id.vars = c("Easting","Northing","Pollutant","PollutantID","SectorID","Sector"), variable.name = "Year", value.name = "emis_t")
+  dt_pts_pre11[, emis_t := as.numeric(emis_t)]
+  
+  # join SNAP
+  dt_pts_pre11 <- dt_SIC[dt_pts_pre11, on = c("PollutantID","SectorID")]
+  dt_pts_pre11[, c("Group","NFR","i.Pollutant","i.Sector","SectorID") := NULL]
+  
+  # set pollutant names to CEH names
+  dt_pts_pre11[, Pollutant := plyr::mapvalues(Pollutant, dt_PID$naei_pt_name, dt_PID$ceh_poll)]
+  
+  #########################
+  ## 2011 to 2015 points ##
+  v_fnames <- paste0("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/NAEI_data/point/raw_data/NAEIPointsSources_",2011:2015,".xlsx")
+  
+  l_pts_1115 <- lapply(v_fnames, function(x) as.data.table(read_excel(x, sheet = "Data"))) 
+  
+  # reset some wonky names, this is just manual stuff
+  invisible(lapply(l_pts_1115, function(x) setnames(x, "PollCode", "PollutantID", skip_absent = T)))
+  invisible(lapply(l_pts_1115, function(x) setnames(x, "Emission", "emis_t", skip_absent = T)))
+  invisible(lapply(l_pts_1115, function(x) setnames(x, "SourceName", "Sector", skip_absent = T)))
   
   # tidy up, set col names etc
-  l_pts <- lapply(l_pts, function(x) x[, Emission := as.numeric(as.character(Emission))])
+  colskeep <- c("Easting","Northing","Pollutant","PollutantID","Sector","SNAP","Year","emis_t")
+  l_pts_1115 <- lapply(l_pts_1115, function(x) x[ ,..colskeep])
   
-  colskeep <- c("Easting","Northing","Pollutant","Emission","Year","SectorID","Sector")
+  # bind to one table, keep SNAP. Join points table to get standard pollutant name. 
+  dt_pts_1115 <- rbindlist(l_pts_1115, use.names = T)
+  dt_pts_1115 <- dt_SIC[!duplicated(Pollutant, PollutantID), c("Pollutant","PollutantID")][dt_pts_1115, on = c("PollutantID")]
+  dt_pts_1115[,c("i.Pollutant") := NULL]
   
-  l_pts <- lapply(l_pts, function(x) x[ ,..colskeep])
-  dt_pts <- rbindlist(l_pts, use.names = T)
+  # set pollutant names to CEH names
+  dt_pts_1115[, Pollutant := plyr::mapvalues(Pollutant, dt_PID$naei_pt_name, dt_PID$ceh_poll)]
   
-  # remove points with 0,0 location and NA emissions
-  dt_pts <- dt_pts[Easting != 0 & Northing != 0]
+  #########################
+  ## 2016 onwards points ##
+  # vector of names and read
+  v_fnames <- paste0("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/NAEI_data/point/raw_data/NAEIPointsSources_",2016:end_year,".xlsx")
+  
+  l_pts_16on <- lapply(v_fnames, function(x) as.data.table(read_excel(x, sheet = "Data"))) 
+  
+  # reset some wonky names, this is just manual stuff
+  invisible(lapply(l_pts_16on, function(x) setnames(x, "PollutantD", "PollutantID", skip_absent = T))) # just one has this in
+  invisible(lapply(l_pts_16on, function(x) setnames(x, "Emission", "emis_t", skip_absent = T)))
+  
+  # tidy up, set col names etc
+  colskeep <- c("Easting","Northing","Pollutant","PollutantID","Sector","SectorID","Year","emis_t")
+  l_pts_16on <- lapply(l_pts_16on, function(x) x[ ,..colskeep])
+  
+  # bind to one table, keep SNAP. Join points table to get standard pollutant name. 
+  dt_pts_16on <- rbindlist(l_pts_16on, use.names = T)
+  dt_pts_16on <- dt_SIC[dt_pts_16on, on = c("PollutantID","SectorID")]
+  dt_pts_16on[,c("SectorID","Group","NFR","i.Pollutant","i.Sector") := NULL]
+  
+  # set pollutant names to CEH names
+  dt_pts_16on[, Pollutant := plyr::mapvalues(Pollutant, dt_PID$naei_pt_name, dt_PID$ceh_poll)]
+  
+  # combine all the points data
+  dt_pts <- rbindlist(list(dt_pts_pre11, dt_pts_1115, dt_pts_16on), use.names = T)
+  dt_pts[, emis_t := as.numeric(emis_t)]
+  
+  # remove points with 0,0 location, NA emissions, NA SNAP
+  dt_pts <- dt_pts[Easting != 0 & Northing != 0] # ~5,000 rows
   dt_pts <- dt_pts[!is.na(Easting)]
   dt_pts <- dt_pts[!is.na(Northing)]
-  dt_pts <- dt_pts[!is.na(Emission)]
+  dt_pts <- dt_pts[!is.na(emis_t)]
+  dt_pts <- dt_pts[emis_t > 0] # 370k rows
   
-  # rename pollutant
-  ## STOP need to add naei point name to the pollutant csv
+  # subset points to pollutants in the pollutants file
+  dt_pts <- dt_pts[Pollutant %in% dt_PID[,ceh_poll]]
   
-  suppressMessages(dt_pts[, Pollutant := plyr::mapvalues(Pollutant, c(dt_SIC[,naei_long]), c(dt_PID[,ceh_poll]))])
-  
-  dt_pts <- dt_pts[PollutantID == dt_PID[ceh_poll == species, naei_poll]]
-  
-  # rename species
-  dt_pts[, Pollutant := species]
-  
-  # add SNAP/GNFR
-  dt_pts <- dt_SIC[Pollutant == species][dt_pts, on = "SectorID"]
+  # add GNFR
   dt_pts <- dt_SNAPGNFR[dt_pts, on = "SNAP"]
   
   # add power station flag
-  dt_pts[SectorID == 18, powFlag := 1]
+  dt_pts[Sector == "Major power producers", powFlag := 1]
   
   # set Area
   dt_pts[, AREA := "UK"]
+  dt_pts <- dt_pts[, c("Easting","Northing","Pollutant","PollutantID","Sector","emis_t","Year","SNAP","GNFR","AREA", "powFlag")]
   
-  setnames(dt_pts, "Emission", "pt_emis_t")
+  fname <- paste0("C:/FastProcessingSam/dump/NAEI_pts_1990_",end_year,"_uk_SNAPGNFR_t_BNG.csv")
+  fwrite(dt_pts, fname)
   
-  fwrite(dt_pts, paste0("C:/FastProcessingSam/dump/",species,"_pt_2020_uk_SNAPGNFR_t_BNG.csv"))
-  #return(dt_pts)
+  return(fname)
   
 }
 
 #########################################################################################
 #### function to convert UK NAEI point data into LL data
 
-transformUKpts <- function(species, start_year, end_year, lookup_NFR, lookup_SIC, lookup_PID, dt_SNAPGNFR){
+transformUKpts <- function(fname){
   
-  dt <- fread(paste0("C:/FastProcessingSam/dump/",species,"_pt_2020_uk_SNAPGNFR_t_BNG.csv"))
+  dt <- fread(fname)
   
   sf_BNG <- st_as_sf(dt, coords = c("Easting","Northing"), crs = "epsg:27700")
   sf_LL <- st_transform(sf_BNG, crs = "epsg:4326")
   
   dt_LL <- as.data.table(st_set_geometry(sf_LL, NULL))[, c("Easting","Northing") := list(as.vector(st_coordinates(sf_LL)[,1]) , as.vector(st_coordinates(sf_LL)[,2]))]
   
-  dt_LL <- dt_LL[, c("Easting","Northing","Pollutant","pt_emis_t","Year","SNAP","GNFR","AREA", "powFlag")]
+  dt_LL <- dt_LL[, c("Easting","Northing","Pollutant","PollutantID","Sector","emis_t","Year","SNAP","GNFR","AREA", "powFlag")]
   
-  fwrite(dt_LL, paste0("C:/FastProcessingSam/dump/",species,"_pt_2020_uk_SNAPGNFR_t_LL.csv"))
+  fname_LL <- gsub("_BNG","_LL",fname)
+  fwrite(dt_LL, fname_LL)
+  return(fname_LL)
   
 }
 
 #########################################################################################
 #### function to read in the UK NAEI inventory totals
+#### write out NFR level table of all pollutants & years
 
-readUKtotals <- function(v_pollutants, start_year, end_year, lookup_NFR, lookup_PID){
+totalsUKformat <- function(end_year, lookup_NFR, lookup_SIC, lookup_PID){
 
   dt_NFR <- fread(lookup_NFR)
-  dt_PID <- fread(lookup_PID)
+  dt_SIC <- fread(lookup_SIC)[!(is.na(PollutantID))] # point to sector
+  dt_PID <- fread(lookup_PID)[!is.na(PollutantID)]
   
   # bring in NAEI data
-  v_fnames <- paste0("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/NAEI_data/diffuse/",v_pollutants,"/NFC_time_series/naei_",v_pollutants,"_",unname(sapply(v_pollutants, function(x) dt_PID[ceh_poll == x, invStart])),"-2020.csv")
+  v_fnames <- paste0("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/NAEI_data/diffuse/",dt_PID$ceh_poll,"/NFC_time_series/naei_",dt_PID$ceh_poll,"_",dt_PID$invStart,"-",end_year,".csv")
   l_naei <- lapply(v_fnames, fread, na.strings = "-", header=T)
-  names(l_naei) <- v_pollutants
+  names(l_naei) <- dt_PID$ceh_poll
   
   # set some names, select columns
-  colskeep <- c("Gas","NFR/CRF Group","Source","Activity",start_year:end_year)
-  
-  l_naei <- lapply(l_naei, function(x) x[Source != ""])
-  l_naei <- lapply(l_naei, function(x) x[ ,..colskeep])
   l_naei <- lapply(l_naei, function(x) setnames(x, c("Gas", "NFR/CRF Group"), c("Pollutant", "NFR19")))
+  l_naei <- lapply(l_naei, function(x) x[Source != ""])
+  l_naei <- lapply(l_naei, function(x) x[,"Units" := NULL])
   
   # melt to long, set emissions to numeric
-  l_naei <- lapply(l_naei, function(x) melt(x, id.vars = c("Pollutant","NFR19","Source","Activity"), 
-                                            variable.name = "Year", value.name = "emis_kt") )
+  l_naei <- lapply(l_naei, function(x) suppressWarnings(melt(x, id.vars = c("Pollutant","NFR19","Source","Activity"), variable.name = "Year", value.name = "emis_kt") )) 
   
   l_naei <- lapply(l_naei, function(x) suppressWarnings(x[,emis_kt := as.numeric(emis_kt)]) )
   
@@ -203,32 +275,45 @@ readUKtotals <- function(v_pollutants, start_year, end_year, lookup_NFR, lookup_
   dt_naei <- dt_naei[Source != ""] 
   dt_naei <- dt_naei[Activity != ""] 
   
+  # set pollutant names to CEH names
+  dt_naei[, Pollutant := plyr::mapvalues(Pollutant, dt_PID$naei_totals_long, dt_PID$ceh_poll)]
+  
   # insert some new attributes
   dt_naei[, c("AREA","emis_t") := list("UK", emis_kt * 1000)]
-  suppressMessages(dt_naei[, Pollutant := plyr::mapvalues(Pollutant, c(dt_PID[,naei_long]), c(dt_PID[,ceh_poll]))])
+  dt_naei[, "emis_kt" := NULL]
   
-  # join sectors
-  dt_joined <- dt_NFR[dt_naei, on = c("NFR19","Source","Activity")]
-  dt_joined <- dt_joined[!is.na(emis_t)]
+  # name and write
+  fname <- paste0("C:/FastProcessingSam/dump/NAEI_totals_1970_",end_year,"_uk_NFR_t.csv")
   
+  fwrite(dt_naei, fname)
   
-  ## removing NA aggregated sectors and Aviation Cruise & `Other` (review NFR codes for NA aggregations)
-  #suppressWarnings(dt_joined[, SNAP := as.numeric(SNAP)]) 
-  #dt_joined <- dt_joined[!is.na(GNFR) ] %>% .[!is.na(SNAP)] %>% .[GNFR != "M_Other"]
-  
-  # summarise to sectors
-  dt_SNAP_agg <- dt_joined[, .(emis_t = sum(emis_t, na.rm=T)), by=.(Pollutant, Year, SNAP, AREA)]
-  dt_GNFR_agg <- dt_joined[, .(emis_t = sum(emis_t, na.rm=T)), by=.(Pollutant, Year, GNFR, AREA)]
-  
-  fwrite(dt_SNAP_agg, paste0("C:/FastProcessingSam/dump/",species,"_pt_2020_uk_SNAPGNFR_t_LL.csv"))
-  
-  return(l)
+  return(fname)
   
 }
 
 #########################################################################################
-#### function to 
-
+#### function to aggregate the formatted UK totals to other sector mapping
+totalsUKagg <- function(fname, classification, end_year, lookup_NFR){
+  
+  cols <- c("NFR19","Source","Activity",classification)
+  dt_NFR <- fread(lookup_NFR)[,..cols]
+  
+  # read data
+  dt <- fread(fname)
+  
+  # join sectors
+  dt_joined <- dt_NFR[dt, on = c("NFR19","Source","Activity")]
+  dt_joined <- dt_joined[!is.na(emis_t)]
+  
+  # aggregate by classification (from dynamic target using v_aggregations)
+  dt_agg <- dt_joined[, .(emis_t = sum(emis_t, na.rm=T)), by=.(Pollutant, Year, get(classification), AREA)]
+  
+  # name and write
+  fname <- paste0("C:/FastProcessingSam/dump/NAEI_totals_1970_",end_year,"_uk_",classification,"_t.csv")
+  
+  fwrite(dt_agg, fname)
+  
+}
 
 #########################################################################################
 #### function to 
@@ -392,23 +477,23 @@ readUKpoints <- function(species, year){
 
 #########################################################################################
 #### function to convert UK points into Lat lon, for writing purposes
-transformUKpts <- function(l_dt, species, year){
-  
-  dt <- l_dt[[as.character(year)]]
-  
-  sf_BNG <- st_as_sf(dt, coords = c("Easting","Northing"), crs = "epsg:27700")
-  sf_LL <- st_transform(sf_BNG, crs = "epsg:4326")
-  
-  dt_LL <- as.data.table(st_set_geometry(sf_LL, NULL))[, c("Easting","Northing") := list(as.vector(st_coordinates(sf_LL)[,1]) , as.vector(st_coordinates(sf_LL)[,2]))]
-  
-  dt_LL <- dt_LL[, c("Easting","Northing","Pollutant","pt_emis_t","Year","SNAP","GNFR","AREA", "powFlag")]
-  
-  fwrite(dt_LL, paste0(data_dir,"/Emissions_grids_plain/LL/",species,"/point/",year,"/",species,"_pt_",year,"_uk_SNAPGNFR_t_LL.csv"))
-  
-  return(dt_LL)
-  
-  
-}
+#transformUKpts <- function(l_dt, species, year){
+#  
+#  dt <- l_dt[[as.character(year)]]
+#  
+#  sf_BNG <- st_as_sf(dt, coords = c("Easting","Northing"), crs = "epsg:27700")
+#  sf_LL <- st_transform(sf_BNG, crs = "epsg:4326")
+#  
+#  dt_LL <- as.data.table(st_set_geometry(sf_LL, NULL))[, c("Easting","Northing") := list(as.vector(st_coordinates(sf_LL)[,1]) , as.vector(st_coordinates(sf_LL)[,2]))]
+#  
+#  dt_LL <- dt_LL[, c("Easting","Northing","Pollutant","pt_emis_t","Year","SNAP","GNFR","AREA", "powFlag")]
+#  
+#  fwrite(dt_LL, paste0(data_dir,"/Emissions_grids_plain/LL/",species,"/point/",year,"/",species,"_pt_",year,"_uk_SNAPGNFR_t_LL.csv"))
+#  
+#  return(dt_LL)
+#  
+#  
+#}
 
 #########################################################################################
 #### function to summarise point data and write

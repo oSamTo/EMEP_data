@@ -25,6 +25,7 @@ dir_data <<- ("/gws/nopw/j04/ceh_generic/samtom/emissions_data/data")
 lookup_NFR <- "//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/lookups/NFR19_SNAP_lookup.csv"
 lookup_SIC <- "//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/lookups/points_sectors_to_SNAP.csv"
 lookup_CRF <- "//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/lookups/CRF_to_SNAP.csv"
-lookup_PID <- "C:/FastProcessingSam/Git_repos/EMEP_inputs/data/lookups/pollutants.csv"
+lookup_PID <- "//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/lookups/NAEI_pollutants.csv"
+
 
 

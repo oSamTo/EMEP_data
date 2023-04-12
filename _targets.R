@@ -27,7 +27,7 @@ lapply(list.of.packages, require, character.only = TRUE)
 #map_yr_eu
 start_year <- 2020
 end_year   <- 2020
-v_poll_select <- c("nox","nh3","sox")
+v_sector_maps <- c("SNAP","GNFR")
 
 #####################
 #### Load the functions to be used in targets
@@ -56,22 +56,25 @@ list(
   tar_target(lookup_NFR,  "//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/lookups/NFR19_SNAP_lookup.csv", format = "file"),
   tar_target(lookup_SIC,  "//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/lookups/points_sectors_to_SNAP.csv", format = "file"),
   tar_target(lookup_CRF,  "//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/lookups/CRF_to_SNAP.csv", format = "file"),
-  tar_target(lookup_PID,  "C:/FastProcessingSam/Git_repos/EMEP_inputs/data/lookups/pollutants.csv", format = "file"),
+  tar_target(lookup_PID,  "//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/lookups/NAEI_pollutants.csv", format = "file"),
   tar_target(dt_SNAPGNFR,  SNAPtoGNFR()),
   tar_target(dt_GNFRSNAP,  GNFRtoSNAP()),
   
-  # create a target of pollutant selection (required for dynamic targets later)
+  # create a target of aggregation types (required for dynamic targets later)
   # https://books.ropensci.org/targets/dynamic.html
-  tar_target(v_pollutants, vectorPolls(v_poll_select)),
+  #tar_target(v_pollutants, vectorPolls(v_poll_select)),
+  tar_target(v_aggregations, vectorSecs(v_sector_maps)),
+  tar_target(vfname_aggregations, vectorSecs_fnames(v_sector_maps), format = "file"),
   
-  # produce tables of point data in the UK
-  # dont need dynamic target yet, just produce one large table
-  tar_target(l_pointData, pointsUKformat(species = v_pollutants, start_year, end_year, lookup_NFR, lookup_SIC, lookup_PID, dt_SNAPGNFR), pattern = map(v_pollutants))
+  # produce ONE table of point data in the UK
+  tar_target(fname_pointData_BNG, pointsUKformat(end_year, lookup_NFR, lookup_SIC, lookup_PID, dt_SNAPGNFR), format = "file"),
+  tar_target(fname_pointData_LL,  transformUKpts(fname = fname_pointData_BNG), format = "file"),
   
+  # produce ONE table of emissions inventory totals at NFR19 (all pollutants/years)
+  tar_target(fname_UKtotalsNFR,  totalsUKformat(end_year, lookup_NFR, lookup_SIC, lookup_PID), format = "file"),
   
-  
-  
-  
+  # produce new tables of aggregated sector data for every nominated sector mapping in v_aggregations
+  tar_target(UKtotalsAgg,  totalsUKagg(fname = fname_UKtotalsNFR, classification = v_aggregations, end_year, lookup_NFR), pattern = map(v_aggregations))
   
   
 )
