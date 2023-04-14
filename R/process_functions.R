@@ -3,6 +3,8 @@
 #### data into .tif files in both BNG and LatLon     ####
 #########################################################
 
+########################
+#### RASTER DOMAINS ####
 #########################################################################################
 #### function to set extents for various domains
 setDomain <- function(area = c("UK","EIRE","EU_EMEP"), crs = c("BNG","LL")){
@@ -57,12 +59,11 @@ setDomain <- function(area = c("UK","EIRE","EU_EMEP"), crs = c("BNG","LL")){
   return(r)
 }
 
-#########################################################################################
 #### functions to create quick/simple lookups between GNFR and SNAP for converting sector maps
 
 GNFRtoSNAP <- function(){
   
-  dt <- data.table(GNFR = c("A_PublicPower","B_Industry","C_OtherStatComb","D_Fugitive","E_Solvents","F_RoadTransport","G_Shipping","H_Aviation","I_Offroad","J_Waste","K_AgriLivestock","L_AgriOther","N_Natural","O_AviCruise","P_IntShipping","q_LULUCF"), SNAP = c(1,3,2,5,6,7,8,8,8,9,10,10,11,NA,8,11))
+  dt <- data.table(GNFR = c("A_PublicPower","B_Industry","C_OtherStationaryComb","D_Fugitive","E_Solvents","F_RoadTransport","G_Shipping","H_Aviation","I_Offroad","J_Waste","K_AgriLivestock","L_AgriOther","N_Natural","O_AviCruise","P_IntShipping","q_LULUCF"), SNAP = c(1,3,2,5,6,7,8,8,8,9,10,10,11,NA,8,11))
   
   return(dt)
 }
@@ -70,21 +71,31 @@ GNFRtoSNAP <- function(){
 SNAPtoGNFR <- function(){
   
   dt <- data.table(SNAP = c(1,3,4,2,5,6,7,NA,8,NA,9,10,NA,11,NA,NA,NA), 
-                   GNFR = c("A_PublicPower","B_Industry","B_Industry","C_OtherStatComb","D_Fugitive","E_Solvents","F_RoadTransport","G_Shipping","H_Aviation","I_Offroad","J_Waste","K_AgriLivestock","L_AgriOther","N_Natural","O_AviCruise","P_IntShipping","q_LULUCF"))
+                   GNFR = c("A_PublicPower","B_Industry","B_Industry","C_OtherStationaryComb","D_Fugitive","E_Solvents","F_RoadTransport","G_Shipping","H_Aviation","I_Offroad","J_Waste","K_AgriLivestock","L_AgriOther","N_Natural","O_AviCruise","P_IntShipping","q_LULUCF"))
   
   return(dt)
 }
 
+#########################
+#### VECTOR CREATION ####
 #########################################################################################
 #### function to set the pollutant vector as a target
-#vectorPolls <- function(v_poll_select){
-#  
-#  v <- v_poll_select
-#  return(v)
-#  
-#}
+vectorPolls <- function(dt_PID, class = c("ceh","emep","eire","naei")){
+  
+  class <- match.arg(class)
+  
+  dt_PID <- dt_PID[!is.na(PollutantID)]
+  
+  if(class == "naei"){
+    v <- dt_PID[,PollutantID]
+  }else{
+    v <- dt_PID[,get(paste0(class,"_poll"))]
+  }
+  
+  return(v)
+  
+}
 
-#########################################################################################
 #### function to set the pollutant vector as a target
 vectorSecs <- function(v_sector_maps){
   
@@ -93,29 +104,262 @@ vectorSecs <- function(v_sector_maps){
   
 }
 
-#########################################################################################
 #### function to set the pollutant vector as a target
-vectorSecs_fnames <- function(v_sector_maps, end_year){
+vectorSecs_fnames <- function(v_sector_maps, endYear){
   
-  v <- paste0("NAEI_totals_1970_",end_year,"_uk_",v_sector_maps,"_t.csv")
+  v <- paste0("NAEI_totals_1970_",endYear,"_uk_",v_sector_maps,"_t.csv")
   return(v)
   
 }
 
+############################
+#### DIRECTORY CREATION ####
 #########################################################################################
 #### function to create directories
 
 
+
+########################
+#### DATA DOWNLOADS ####
 #########################################################################################
-#### function to download data from UK NAEI using pollutant vector. 
+#### function(s) to download EMEP emissions totals directly from the web (and write)
+#### no formatting. 
 
-# need similar for EU and EIRE
+## sub function to make URL and download emissions from EMEP
+urlEMEP <- function(species, v_territories, endYear, invYear_EMEP){
+  
+  terr_string <- gsub(", ","", toString(paste0("&countries=",v_territories)))
+  
+  emis_yr_string <- gsub(", ","", toString(paste0("&years=",1990:endYear)))
+  
+  emep_url <- paste0("https://webdab01.umweltbundesamt.at/cgi-bin/wedb2_controller.pl?sectordefinitions=NFR2014_L2&State=official&database=web&reportyear=",invYear_EMEP, emis_yr_string, terr_string,"&pollutants=",species,"&datatype=national_csv&unit=Gg")
+  
+  dt <- fread(emep_url)
+  #dt[, `NUMBER/FLAG` := as.numeric(`NUMBER/FLAG`)]
+  
+  return(dt)
+  
+}
 
+downloadEMEPtotals <- function(species, endYear, invYear_EMEP, dt_PID, dt_ISO){
+  
+  dt_PID <- dt_PID[!is.na(PollutantID)]
+  
+  # EMEP pollutant to download, and countries
+  #EMEPpoll <- dt_PID[ceh_poll == species, emep_poll]
+  if(species == "PM_5") species <- "PM2.5" # look to change dt_PID - check EMEP maps & EIRE maps
+  
+  v_territories <- unique(dt_ISO[, EMEP_iso])
+  
+  dt_emis <- urlEMEP(species, v_territories, endYear, invYear_EMEP)
+  
+  fname <- paste0("C:/FastProcessingSam/dump/zztar_EMEP/totals/EMEPtotals_",species,"_1990-",endYear,"_inv",invYear_EMEP,"_Gg.csv")
+  
+  fwrite(dt, fname)
+  
+  return(fname)
+  
+}
+
+#### function(s) to download EMEP gridded emissions directly from the web (and write)
+#### no formatting. As .txt files.  They only exist as GNFR maps. 
+downloadEMEPmaps <- function(species, endYear, invYear_EMEP, dt_PID){
+  
+  dt_PID <- dt_PID[!is.na(PollutantID)]
+ 
+  # create URL
+  emep_url <- paste0("https://webdab01.umweltbundesamt.at/download/gridding",invYear_EMEP,"/",endYear,"/",species,"_",invYear_EMEP,"_GRID_",endYear,".zip")
+  
+  # set file name for zip file
+  folname   <- paste0("EMEP_",species,"_GRID_inv",invYear_EMEP,"_emis",endYear)
+  fname_zip <- paste0(folname,".zip")
+  
+  # download 
+  download.file(url = emep_url,
+                destfile = paste0("C:/FastProcessingSam/dump/zztar_EMEP/maps/",fname_zip),
+                quiet = T)
+  
+  # unzip the raw .txt data download. No formatting here. 
+  unzip(paste0("C:/FastProcessingSam/dump/zztar_EMEP/maps/",fname_zip), overwrite = T,  exdir = paste0("C:/FastProcessingSam/dump/zztar_EMEP/maps/",folname))
+  
+  # list files and return
+  v_fnames <- list.files(paste0("C:/FastProcessingSam/dump/zztar_EMEP/maps/",folname), pattern = ".txt$", full.names = T)
+  return(v_fnames)
+  
+}
+
+#### function(s) to download EMEP gridded emissions directly from the web (and write)
+#### no formatting. As .nc files.  They only exist as GNFR maps. 
+downloadEMEPnc <- function(species, endYear, invYear_EMEP, dt_PID){
+ 
+  ## download .nc files?
+  # might not be any point - EMEP4UK requires variables as country/sector specific, which is in .txt files
+  
+}
+
+
+#### function(s) to download NAEI emissions totals directly from the web (and write)
+#### no formatting. 
+downloadNAEItotals <- function(species, endYear, invYear_NAEI, dt_PID){
+  
+  ## At the moment this is done with a query number generated by actually doing the
+  ## data request on the website. Cumbersome and non-programmtic. 
+  ## Perhaps just transfer over all extant tables. 
+  
+  # list files and return
+  v_fnames <- list.files(paste0("C:/FastProcessingSam/dump/zztar_NAEI/maps/",folname), pattern = ".asc$", full.names = T)
+  return(v_fnames)
+
+}
+
+#### function(s) to download NAEI point source emissions directly from the web (and write)
+#### no formatting. 
+downloadNAEIpoints <- function(ptsYear_UK, invYear_NAEI){
+  
+  # all pollutants are in one file. 
+  # only latest year is available, the download year should be determined in PARAMETERS.R
+  
+  # create URL
+  fname <- paste0("NAEIPointsSources_",ptsYear_UK,".xlsx")
+  naei_url <- paste0("https://naei.beis.gov.uk/mapping/mapping_",ptsYear_UK,"/",fname)
+  
+  # download 
+  download.file(url = naei_url,
+                destfile = paste0("C:/FastProcessingSam/dump/zztar_NAEI/points/",fname),
+                quiet = T)
+  
+  fname <- paste0("C:/FastProcessingSam/dump/zztar_NAEI/points/",fname)
+  return(fname)
+ # (copy over captured versions from P:/)
+}
+
+#### function(s) to download NAEI gridded emissions directly from the web (and write)
+#### no formatting. 
+downloadNAEImaps <- function(species, mapYear_UK, invYear_NAEI, dt_PID){
+  
+  # only latest map year is available, the map year should be determined in PARAMETERS.R
+  
+  dt_PID <- dt_PID[!is.na(PollutantID)]
+  
+  # create URL
+  naei_url <- paste0("https://naei.beis.gov.uk/mapping/mapping_",mapYear_UK,"/",species,".zip")
+  
+  # set file name for zip file
+  folname   <- paste0("NAEI_",species,"_GRID_inv",invYear_EMEP,"_emis",mapYear_UK)
+  fname_zip <- paste0(folname,".zip")
+  
+  # download 
+  download.file(url = naei_url,
+                destfile = paste0("C:/FastProcessingSam/dump/zztar_NAEI/maps/",fname_zip),
+                quiet = T)
+  
+  # unzip the raw .asc/.prj data download. No formatting here. 
+  unzip(paste0("C:/FastProcessingSam/dump/zztar_NAEI/maps/",fname_zip), overwrite = T,  exdir = paste0("C:/FastProcessingSam/dump/zztar_NAEI/maps/",folname))
+  
+  # list files and return
+  v_fnames <- list.files(paste0("C:/FastProcessingSam/dump/zztar_NAEI/maps/",folname), pattern = ".asc$", full.names = T)
+  return(v_fnames)
+  
+}
+
+#### function(s) to download MapEire gridded emissions directly from the web (and write)
+#### no formatting.
+
+downloadEIREmaps <- function(mapYear_IE){
+  
+  ## ONLY 2019 maps available (and 2016 - out of date). Have to just check every year. 
+  ## EIRE maps are NOT by pollutant, but by GNFR shapefiles with all pollutants within them. 
+  
+  ## EIRE maps have been copied across - there is a 'SSL connect error' that prevents download
+  
+  # list files and return
+  v_fnames <- list.files(paste0("C:/FastProcessingSam/dump/zztar_NAEI/maps/",folname), pattern = ".asc$", full.names = T)
+  return(v_fnames)
+  
+}
+
+# https://projects.au.dk/fileadmin/projects/mapeire/Download_Shapefiles/2019_A_PublicPower.zip
+
+#########################
+#### DATA FORMATTING ####
+#########################################################################################
+#### function to format EMEP downloaded totals. Data in Gg/kt
+formatEUtotals <- function(fname, endYear, invYear_EMEP, dt_PID){
+  
+  dt_PID <- dt_PID[!is.na(PollutantID)]
+  
+  # read data. Cant really get pollutant name from filename in case it has `_` in the poll name
+  dt <- fread(fname)
+  
+  # set names, choose columns 
+  dt[, c("UNIT") := NULL]
+  setnames(dt, c("# Format: ISO2","YEAR","SECTOR","POLLUTANT","NUMBER/FLAG"), c("ISO2","Year","NFR19","Pollutant","emis_kt"))
+  dt[, emis_kt := suppressWarnings(as.numeric(emis_kt)) ]
+  
+  # extract and set pollutant name
+  EMEPpoll <- unique(dt[,Pollutant])
+  CEHpoll  <- dt_PID[emep_poll == EMEPpoll, ceh_poll]
+  dt[, Pollutant := CEHpoll]
+  
+  # remove particular EMEP NFR codes, then remove any NA
+  v_removal <- c("NT COMPLIANCE","NT COMPL (NECD)","ADJUSTMENTS","ADJ AND FLEX", unique(dt[,NFR19][grep("(fu)", dt[,NFR19])]))
+  dt <- dt[!(NFR19 %in% v_removal)]
+  dt <- dt[!(is.na(emis_kt))]
+  
+  # convert to tonnes and write
+  dt[, "emis_t" := emis_kt * 1000] %>% .[,"emis_kt" := NULL]
+  
+  fname <- paste0("C:/FastProcessingSam/dump/zztar_EMEP/totals/EMEPtotals_",CEHpoll,"_NFR_1990-",endYear,"_inv",invYear_EMEP,"_Mg.csv")
+  
+  fwrite(dt, fname)
+  
+  return(fname)
+  
+}
 
 #########################################################################################
+#### function to aggregate the formatted EU totals to other sector mapping
+aggEUtotals <- function(fname, ){
+  
+ 
+  
+   
+  
+}
+
+#########################################################################################
+#### function to format EMEP downloaded maps. Data in .txt files, 0.1 degree, tonnes cell-1
+formatEUmaps <- function(fname, endYear, invYear_EMEP, dt_PID){
+  
+  
+  # read data. Cant really get pollutant name from filename in case it has `_` in the poll name
+  dt <- fread(fname)
+  
+  # set names, choose columns 
+  dt[, c("UNIT") := NULL]
+  setnames(dt, c("# Format: ISO2","YEAR","SECTOR","POLLUTANT","LONGITUDE","LATITUDE","EMISSION"), c("ISO2","Year","GNFR","Pollutant","Lon","Lat","emis_t"))
+  dt[, GNFR := gsub("N14 ","",GNFR)]
+  dt[, emis_t := suppressWarnings(as.numeric(emis_t)) ]
+  
+  # extract and set pollutant name
+  EMEPpoll <- unique(dt[,Pollutant])
+  CEHpoll  <- dt_PID[emep_poll == EMEPpoll, ceh_poll]
+  dt[, Pollutant := CEHpoll]
+  
+  # filename and write
+  fname <- paste0("C:/FastProcessingSam/dump/zztar_EMEP/maps/",CEHpoll,"_F_RoadTransport_2022_GRID_2020.csv")
+  
+  EMEPtotals_",CEHpoll,"_NFR_1990-",endYear,"_inv",invYear_EMEP,"_Mg.csv
+  
+  fwrite(dt, fname)
+  
+  return(fname)
+  
+}
+
 #### function to read in UK NAEI points data and process it, write output, over all pollutants.
 #### Only UK. Eire and EU have total emissions gridded. E-PRTR is not a complete register (plus not needed)
-pointsUKformat <- function(end_year, lookup_NFR, lookup_SIC, lookup_PID, dt_SNAPGNFR){
+formatUKpoints <- function(endYear, lookup_NFR, lookup_SIC, lookup_PID, dt_SNAPGNFR){
   
   # process the point data for all years and for all pollutants.
   # There's no point to do this over and over for years/pollutants
@@ -171,7 +415,7 @@ pointsUKformat <- function(end_year, lookup_NFR, lookup_SIC, lookup_PID, dt_SNAP
   #########################
   ## 2016 onwards points ##
   # vector of names and read
-  v_fnames <- paste0("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/NAEI_data/point/raw_data/NAEIPointsSources_",2016:end_year,".xlsx")
+  v_fnames <- paste0("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/NAEI_data/point/raw_data/NAEIPointsSources_",2016:endYear,".xlsx")
   
   l_pts_16on <- lapply(v_fnames, function(x) as.data.table(read_excel(x, sheet = "Data"))) 
   
@@ -215,7 +459,7 @@ pointsUKformat <- function(end_year, lookup_NFR, lookup_SIC, lookup_PID, dt_SNAP
   dt_pts[, AREA := "UK"]
   dt_pts <- dt_pts[, c("Easting","Northing","Pollutant","PollutantID","Sector","emis_t","Year","SNAP","GNFR","AREA", "powFlag")]
   
-  fname <- paste0("C:/FastProcessingSam/dump/NAEI_pts_1990_",end_year,"_uk_SNAPGNFR_t_BNG.csv")
+  fname <- paste0("C:/FastProcessingSam/dump/NAEI_pts_1990_",endYear,"_uk_SNAPGNFR_t_BNG.csv")
   fwrite(dt_pts, fname)
   
   return(fname)
@@ -246,14 +490,14 @@ transformUKpts <- function(fname){
 #### function to read in the UK NAEI inventory totals
 #### write out NFR level table of all pollutants & years
 
-totalsUKformat <- function(end_year, lookup_NFR, lookup_SIC, lookup_PID){
+totalsUKformatted <- function(endYear, lookup_NFR, lookup_SIC, lookup_PID){
 
   dt_NFR <- fread(lookup_NFR)
   dt_SIC <- fread(lookup_SIC)[!(is.na(PollutantID))] # point to sector
   dt_PID <- fread(lookup_PID)[!is.na(PollutantID)]
   
   # bring in NAEI data
-  v_fnames <- paste0("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/NAEI_data/diffuse/",dt_PID$ceh_poll,"/NFC_time_series/naei_",dt_PID$ceh_poll,"_",dt_PID$invStart,"-",end_year,".csv")
+  v_fnames <- paste0("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/NAEI_data/diffuse/",dt_PID$ceh_poll,"/NFC_time_series/naei_",dt_PID$ceh_poll,"_",dt_PID$invStart,"-",endYear,".csv")
   l_naei <- lapply(v_fnames, fread, na.strings = "-", header=T)
   names(l_naei) <- dt_PID$ceh_poll
   
@@ -283,7 +527,7 @@ totalsUKformat <- function(end_year, lookup_NFR, lookup_SIC, lookup_PID){
   dt_naei[, "emis_kt" := NULL]
   
   # name and write
-  fname <- paste0("C:/FastProcessingSam/dump/NAEI_totals_1970_",end_year,"_uk_NFR_t.csv")
+  fname <- paste0("C:/FastProcessingSam/dump/NAEI_totals_1970_",endYear,"_uk_NFR_t.csv")
   
   fwrite(dt_naei, fname)
   
@@ -293,7 +537,7 @@ totalsUKformat <- function(end_year, lookup_NFR, lookup_SIC, lookup_PID){
 
 #########################################################################################
 #### function to aggregate the formatted UK totals to other sector mapping
-totalsUKagg <- function(fname, classification, end_year, lookup_NFR){
+totalsUKagg <- function(fname, classification, endYear, lookup_NFR){
   
   cols <- c("NFR19","Source","Activity",classification)
   dt_NFR <- fread(lookup_NFR)[,..cols]
@@ -309,14 +553,66 @@ totalsUKagg <- function(fname, classification, end_year, lookup_NFR){
   dt_agg <- dt_joined[, .(emis_t = sum(emis_t, na.rm=T)), by=.(Pollutant, Year, get(classification), AREA)]
   
   # name and write
-  fname <- paste0("C:/FastProcessingSam/dump/NAEI_totals_1970_",end_year,"_uk_",classification,"_t.csv")
+  fname <- paste0("C:/FastProcessingSam/dump/NAEI_totals_1970_",endYear,"_uk_",classification,"_t.csv")
   
   fwrite(dt_agg, fname)
   
 }
 
 #########################################################################################
-#### function to 
+#### function to take EMEP downloads for Eire and create standardised table
+#### EMEP downloads are in GNFR because they can be provided in this way
+#### therefore no NFR19 table is created, and only a SNAP conversion is needed
+
+totalsIEformat <- function(endYear, lookup_NFR, lookup_SIC, lookup_PID){
+  
+  dt_NFR <- fread(lookup_NFR)
+  dt_SIC <- fread(lookup_SIC)[!(is.na(PollutantID))] # point to sector
+  dt_PID <- fread(lookup_PID)[!is.na(PollutantID)]
+  
+  # read in data
+  v_fnames <- paste0("//nercbuctdb.ad.nerc.ac.uk/projects1/NEC03642_Mapping_Ag_Emissions_AC0112/NAEI_data_and_SNAPS/EIRE_data/diffuse/EMEP_totals/",dt_PID$ceh_poll,"/EMEP_",dt_PID$ceh_poll,"_ann.tots_GNFR_1990-",endYear,".txt")
+  
+  l_eire <- lapply(v_fnames, fread, na.strings = "-", header=T)
+  names(l_eire) <- dt_PID$ceh_poll
+  
+  # set some names, select columns
+  l_eire <- lapply(l_eire, function(x) setnames(x, c("YEAR","NUMBER/FLAG","SECTOR","POLLUTANT"),c("Year","emis_kt","GNFR","Pollutant")))
+  l_eire <- lapply(l_eire, function(x) x[,c("UNIT","# Format: ISO2") := NULL])
+  
+  # set emissions to numeric
+  l_eire <- lapply(l_eire, function(x) suppressWarnings(x[,emis_kt := as.numeric(emis_kt)]) )
+  
+  # convert to one table
+  dt_eire <- rbindlist(l_eire, use.names = T)
+  
+  # subset some NAs
+  dt_eire <- dt_eire[!is.na(emis_kt)] 
+  
+  # set pollutant names to CEH names
+  dt_eire[, Pollutant := plyr::mapvalues(Pollutant, dt_PID$emep_poll, dt_PID$ceh_poll)]
+  # make exception for PM2.5 as this is named differently FOR SOME REASON
+  dt_eire[Pollutant == "PM2.5", Pollutant := "pm25"]
+  
+  # insert some new attributes
+  dt_eire[, c("AREA","emis_t") := list("IE", emis_kt * 1000)]
+  dt_eire[, "emis_kt" := NULL]
+  
+  # name and write
+  fname <- paste0("C:/FastProcessingSam/dump/EMEP_totals_1990_",endYear,"_ie_GNFR_t.csv")
+  
+  fwrite(dt_eire, fname)
+  
+  return(fname)
+  
+  # remove "Other" from data (no mapping)
+  #dt_EIRE <- dt_EIRE[!(GNFR %in% c("M_Other","z_Memo"))]
+  
+}
+
+
+
+
 
 
 
